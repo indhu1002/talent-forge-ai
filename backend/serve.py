@@ -7,6 +7,24 @@ import time
 
 if os.getenv("RENDER") and os.getenv("DB_ENGINE") != "mysql":
     raise SystemExit("Render requires cloud MySQL to preserve accounts, reports and PDFs.")
+# A newly provisioned database can take longer than the application image build.
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+import django
+django.setup()
+from django.db import connection, connections, OperationalError
+ready_deadline = time.monotonic() + 180
+while True:
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        connections.close_all()
+        break
+    except OperationalError:
+        connections.close_all()
+        if time.monotonic() >= ready_deadline:
+            raise SystemExit("Cloud database is not ready after 180 seconds; check database status and connection settings.")
+        print("Waiting for the cloud database...", flush=True)
+        time.sleep(5)
 subprocess.run([sys.executable, "manage.py", "migrate", "--noinput"], check=True)
 subprocess.run([sys.executable, "manage.py", "createcachetable"], check=True)
 processes = []
