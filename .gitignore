@@ -1,0 +1,22 @@
+# Secrets and private local data
+**/.env
+**/.env.*
+!**/.env.example
+**/.dev-secret
+**/.mysql-root-password
+**/DEMO-CREDENTIALS.txt
+*.sqlite3
+backend/media/
+mysql-data/
+
+# Generated dependencies and artifacts
+backend/.venv/
+frontend/node_modules/
+frontend/dist/
+**/__pycache__/
+*.py[cod]
+*.log
+.server-pids
+.mysql-pid
+.DS_Store
+Thumbs.db
