@@ -3,7 +3,8 @@ from .models import User, Resume, Job, Application
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["id", "username", "email", "first_name", "role"]
+        fields = ["id", "username", "email", "first_name", "role", "is_demo"]
+        read_only_fields = ["is_demo"]
 class ResumeSerializer(serializers.ModelSerializer):
     owner_name = serializers.CharField(source="owner.first_name", read_only=True)
     class Meta:

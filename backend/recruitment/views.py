@@ -104,6 +104,8 @@ class JobViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = Job.objects.all()
+        if user.role != "admin":
+            qs = qs.filter(recruiter__is_demo=user.is_demo)
         if user.role == "candidate":
             qs = qs.filter(active=True)
         if self.request.query_params.get("mine") == "1" and user.role != "admin":
@@ -147,6 +149,8 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        if data["job"].recruiter.is_demo != request.user.is_demo:
+            raise PermissionDenied("This opportunity is reserved for demo accounts.")
         if data["resume"].owner != request.user or not data["job"].active:
             raise PermissionDenied("Select your own resume and an active job.")
         try:
@@ -170,6 +174,8 @@ def analytics(request):
     user = request.user
     resumes = Resume.objects.all() if user.role == "admin" else Resume.objects.filter(owner=user) if user.role == "candidate" else Resume.objects.filter(application__job__recruiter=user).distinct()
     jobs = Job.objects.filter(active=True) if user.role != "recruiter" else Job.objects.filter(recruiter=user)
+    if user.role != "admin":
+        jobs = jobs.filter(recruiter__is_demo=user.is_demo)
     apps = Application.objects.all()
     if user.role == "candidate":
         apps = apps.filter(candidate=user)
@@ -183,6 +189,8 @@ def users(request):
     require_role(request.user, "admin")
     if request.method == "PATCH":
         user = get_object_or_404(User, pk=request.data.get("id"))
+        if user.is_demo:
+            return Response({"detail": "Public demo roles cannot be changed."}, status=400)
         if user == request.user:
             return Response({"detail": "Cannot change your own role."}, status=400)
         role = request.data.get("role")

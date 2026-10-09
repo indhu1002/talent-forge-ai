@@ -142,7 +142,7 @@ Routes begin with /api/. Authenticated requests use Authorization: Bearer <acces
 
 See [DEPLOY.md](DEPLOY.md) and the included [Render Blueprint](render.yaml).
 
-The cloud build serves React and Django from the same HTTPS origin. It uses Gunicorn, WhiteNoise, verified TLS to MySQL, a database-backed report queue and database-backed private PDF storage. No local demo accounts are created online. Register a fresh candidate/recruiter account.
+The cloud build serves React and Django from the same HTTPS origin. It uses Gunicorn, WhiteNoise, verified TLS to MySQL, a database-backed report queue and database-backed private PDF storage. The login page offers one-click candidate and recruiter reviewer demos with fictional sample data. These public accounts are read-only, isolated from real jobs and resumes, and cannot generate paid AI reports. Register a fresh account for uploads and full workflows. Administrator credentials are never public.
 
 Render's free app service sleeps after inactivity. Use Aiven's free MySQL plan for persistent accounts, applications, reports and PDFs; Render's free filesystem cannot retain uploads. The PDF storage budget defaults to 128 MB within Aiven's 1 GB database allowance. This is intended for a small portfolio/demo installation. Larger deployments should use object storage and a dedicated queue.
 
@@ -156,3 +156,8 @@ JWTs currently use sessionStorage. Cloud providers may suspend free services, an
 - [Simple JWT blacklisting](https://django-rest-framework-simplejwt.readthedocs.io/en/stable/blacklist_app.html)
 - [OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
 - [OpenAI API error codes](https://developers.openai.com/api/docs/guides/error-codes)
+## Public reviewer demos
+
+After migrations, run `python manage.py seed_reviewer_demo` once to provision the two reviewer accounts. The command is idempotent and refuses to overwrite a real or privileged account. Public credentials are intentionally limited to `demo-candidate` and `demo-recruiter` with password `TalentForgeDemo!2026`; the login page uses them automatically. Do not reuse this password for real accounts. Demo roles cannot be promoted through user management.
+
+Log out is visible in the top navigation on desktop and mobile and clears the browser session and form state. Refresh tokens are blacklisted on the server.

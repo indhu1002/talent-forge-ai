@@ -8,6 +8,7 @@ def resume_path(instance, filename):
 class User(AbstractUser):
     role = models.CharField(max_length=12, choices=[("candidate", "Candidate"), ("recruiter", "Recruiter"), ("admin", "Administrator")], default="candidate")
     email = models.EmailField(unique=True)
+    is_demo = models.BooleanField(default=False)
 
 class Resume(models.Model):
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="resumes")
