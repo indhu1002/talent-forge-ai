@@ -49,3 +49,8 @@ class CareerReport(models.Model):
     model = models.CharField(max_length=100, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+class ResumeBlob(models.Model):
+    name = models.CharField(max_length=255, primary_key=True)
+    data = models.BinaryField()
+    size = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)

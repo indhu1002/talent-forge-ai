@@ -38,3 +38,25 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run build
+  hosted-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t talentforge-test .
+      - name: Exercise the hosted image
+        run: |
+          docker run -d --name talentforge-test -p 10000:10000 -e SECRET_KEY=ci-only-not-a-deployment-secret -e DB_ENGINE=sqlite -e ALLOWED_HOSTS=localhost,127.0.0.1 -e SECURE_SSL_REDIRECT=0 talentforge-test
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:10000/health/; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:10000/health/
+          curl -fsS http://127.0.0.1:10000/ -o /tmp/talentforge-home.html
+          grep -q '/static/assets/' /tmp/talentforge-home.html
+          asset=$(sed -n 's/.*src="\([^" ]*\)".*/\1/p' /tmp/talentforge-home.html | head -n 1)
+          curl -fsS "http://127.0.0.1:10000$asset" -o /dev/null
+          status=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:10000/api/auth/me/)
+          test "$status" = 401
+      - name: Container diagnostics
+        if: failure()
+        run: docker logs talentforge-test

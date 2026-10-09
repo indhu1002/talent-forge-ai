@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: talent-forge-ai
+    runtime: docker
+    plan: free
+    region: frankfurt
+    repo: https://github.com/indhu1002/talent-forge-ai
+    branch: main
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health/
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: DEBUG
+        value: "0"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DB_ENGINE
+        value: mysql
+      - key: MYSQL_DATABASE
+        sync: false
+      - key: MYSQL_USER
+        sync: false
+      - key: MYSQL_PASSWORD
+        sync: false
+      - key: MYSQL_HOST
+        sync: false
+      - key: MYSQL_PORT
+        sync: false
+      - key: MYSQL_SSL_CA
+        sync: false
+      - key: ENABLE_AI_FEEDBACK
+        value: "0"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5.6-terra
+      - key: CAREER_AI_MODEL
+        value: gpt-5.6-terra
+      - key: MAX_RESUME_STORAGE_MB
+        value: "128"

@@ -121,7 +121,7 @@ Frontend:
     npm ci
     npm run build
 
-30 backend tests cover authentication, token rotation/logout, role and ownership permissions, PDF validation/extraction, applications, report privacy/consent, background workers, structured provider output, evidence verification and provider failure handling. Automated browser checks exercised the report UI using isolated fixtures. CI runs the backend suite on SQLite and builds the frontend.
+36 backend tests cover authentication, token rotation/logout, role and ownership permissions, PDF validation/extraction, applications, report privacy/consent, background workers, structured provider output, evidence verification and provider failure handling. Automated browser checks exercised the report UI using isolated fixtures. CI runs the backend suite on SQLite and builds the frontend.
 
 ## API
 
@@ -138,13 +138,17 @@ Routes begin with /api/. Authenticated requests use Authorization: Bearer <acces
 | career-config/ | Model/configuration presence, never the API key |
 | career-reports/, career-reports/{id}/ | Private JD coaching reports |
 
-## Production hosting
+## Free online hosting
 
-Uploading this repository to GitHub publishes the source; it does not run Django, MySQL or the complete application. GitHub Pages alone cannot host the backend.
+See [DEPLOY.md](DEPLOY.md) and the included [Render Blueprint](render.yaml).
 
-For deployment, configure DEBUG=0, a unique SECRET_KEY, allowed hosts, CORS, HTTPS, a production WSGI server, database backups and a reverse proxy. Serve frontend/dist and proxy same-origin /api to Django. The Vite proxy is for local development only.
+The cloud build serves React and Django from the same HTTPS origin. It uses Gunicorn, WhiteNoise, verified TLS to MySQL, a database-backed report queue and database-backed private PDF storage. No local demo accounts are created online. Register a fresh candidate/recruiter account.
 
-Replace demo accounts and establish resume consent, retention and deletion policies. Use a durable background task queue instead of the development thread pool, and centralized throttling/cache for multiple workers. JWTs currently use sessionStorage; consider HttpOnly-cookie handling as part of production hardening. The development build has not undergone a production security audit.
+Render's free app service sleeps after inactivity. Use Aiven's free MySQL plan for persistent accounts, applications, reports and PDFs; Render's free filesystem cannot retain uploads. The PDF storage budget defaults to 128 MB within Aiven's 1 GB database allowance. This is intended for a small portfolio/demo installation. Larger deployments should use object storage and a dedicated queue.
+
+Hosting can stay on free plans within their limits. OpenAI API usage is separately billed; local resume scoring remains available without a key. The deployment does not bypass API quota or guarantee model access. Never place API keys or database credentials in source files or frontend variables.
+
+JWTs currently use sessionStorage. Cloud providers may suspend free services, and database backups must be monitored. This project has not undergone a production security audit.
 
 ## References
 

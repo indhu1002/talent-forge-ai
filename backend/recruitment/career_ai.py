@@ -160,8 +160,10 @@ def generate_report(resume_text, job_description):
 def run_report(report_id):
     close_old_connections()
     try:
-        report = CareerReport.objects.get(pk=report_id, status="queued")
-        CareerReport.objects.filter(pk=report_id, status="queued").update(status="running", updated_at=timezone.now())
+        claimed = CareerReport.objects.filter(pk=report_id, status="queued").update(status="running", updated_at=timezone.now())
+        if not claimed:
+            return
+        report = CareerReport.objects.get(pk=report_id, status="running")
         result, model = generate_report(report.resume_snapshot, report.job_description)
         CareerReport.objects.filter(pk=report_id, status="running").update(result=result, model=model, status="completed", error="", updated_at=timezone.now())
     except CareerReport.DoesNotExist:
@@ -173,7 +175,8 @@ def run_report(report_id):
     finally:
         connections.close_all()
 
-# Development worker. Production should use a durable queue such as Celery.
+# Local development worker. Hosted mode polls the persisted database queue.
 executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="career-ai")
 def enqueue_report(report_id):
-    executor.submit(run_report, report_id)
+    if os.getenv("CAREER_WORKER_MODE") != "database":
+        executor.submit(run_report, report_id)

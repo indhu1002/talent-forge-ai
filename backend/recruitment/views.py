@@ -82,7 +82,8 @@ class ResumeViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Provide 80–100,000 characters of readable resume text. Scanned PDFs require OCR first."}, status=400)
         serializer = self.get_serializer(data={"title": request.data.get("title", "My resume"), "text": text})
         serializer.is_valid(raise_exception=True)
-        resume = serializer.save(owner=request.user, analysis=analyze(text), file=uploaded or "")
+        with transaction.atomic():
+            resume = serializer.save(owner=request.user, analysis=analyze(text), file=uploaded or "")
         return Response(self.get_serializer(resume).data, status=201)
     def perform_destroy(self, instance):
         if instance.owner != self.request.user and self.request.user.role != "admin":

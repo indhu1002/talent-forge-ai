@@ -20,3 +20,5 @@ frontend/dist/
 .mysql-pid
 .DS_Store
 Thumbs.db
+backend/staticfiles/
+backend/frontend_dist/
