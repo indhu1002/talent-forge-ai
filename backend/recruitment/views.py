@@ -15,7 +15,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from pypdf import PdfReader
 from .models import User, Resume, Job, Application
 from .serializers import UserSerializer, ResumeSerializer, JobSerializer, ApplicationSerializer
-from .analysis import analyze, match
+from .analysis import analyze
 
 class LoginThrottle(AnonRateThrottle):
     scope = "login"
@@ -123,15 +123,6 @@ class JobViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         self.guard(instance)
         instance.delete()
-    @action(detail=False, methods=["get"])
-    def matches(self, request):
-        require_role(request.user, "candidate")
-        resume_id = request.query_params.get("resume", "")
-        if not str(resume_id).isdigit():
-            return Response({"detail": "Select a valid resume."}, status=400)
-        resume = get_object_or_404(Resume, pk=int(resume_id), owner=request.user)
-        jobs = [{**JobSerializer(job).data, "match": match(resume.text, job.skills)} for job in self.get_queryset()]
-        return Response(sorted(jobs, key=lambda j: j["match"]["score"], reverse=True))
 
 class ApplicationViewSet(viewsets.ModelViewSet):
     serializer_class = ApplicationSerializer

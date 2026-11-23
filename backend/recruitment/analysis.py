@@ -42,8 +42,3 @@ def analyze(text):
         except Exception:
             result["ai_notice"] = "AI feedback unavailable; local analysis completed."
     return result
-
-def match(text, skills):
-    lower = text.lower()
-    matched = [s for s in skills if has_skill(lower, s)]
-    return {"score": round(len(matched) / len(skills) * 100) if skills else 0, "matched": matched, "missing": [s for s in skills if s not in matched]}

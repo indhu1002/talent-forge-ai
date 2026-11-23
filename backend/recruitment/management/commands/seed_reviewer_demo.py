@@ -19,7 +19,7 @@ Software Developer | Demo Studio | 2024-2026
 - Added database indexes and reduced API response time by 30%.
 - Collaborated with five developers and wrote integration tests.
 PROJECTS
-Talent Forge: resume scoring, skill-based job matching, analytics and resume builder.
+Talent Forge: resume scoring, analytics and resume builder.
 EDUCATION
 Bachelor of Technology in Computer Science | Demo University | 2020-2024
 """

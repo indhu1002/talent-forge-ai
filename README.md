@@ -11,14 +11,14 @@ Candidates can manage resumes, analyze a resume against a specific job descripti
 - Private PDF resume uploads and text extraction.
 - Local resume scoring across 18 transparent criteria.
 - Resume builder with live preview, save/analyze and browser PDF export.
-- Skill-based job matching, applications and recruiter status updates.
+- Job postings, applications and recruiter status updates.
 - Analytics based on actual stored data.
 - Groq-powered JD coaching with requirement evidence, gaps and proposed resume rewrites.
 - 20 tailored practice questions with sample answers and follow-ups: 6 technical, 4 project, 4 behavioral, 4 scenario and 2 HR.
 - Five-day preparation plans, private saved reports and text export.
 - Responsive candidate and recruiter workspaces.
 
-Resume scores describe presentation and keyword evidence. Job matching measures skill overlap. These are guidance tools, not hiring decisions or predictions of candidate ability. The project's claimed 60% screening-time reduction has not been benchmarked.
+Resume scores describe presentation and keyword evidence. These are guidance tools, not hiring decisions or predictions of candidate ability. The project's claimed 60% screening-time reduction has not been benchmarked.
 
 ## Requirements
 
@@ -131,7 +131,7 @@ Routes begin with /api/. Authenticated requests use Authorization: Bearer <acces
 | --- | --- |
 | auth/register/, auth/login/, auth/refresh/, auth/logout/, auth/me/ | Authentication |
 | resumes/, resumes/{id}/, resumes/{id}/download/ | Private resume management |
-| jobs/, jobs/{id}/, jobs/matches/?resume={id} | Job management and matching |
+| jobs/, jobs/{id}/ | Job management |
 | applications/, applications/{id}/ | Applications and recruiter status |
 | analytics/ | Role-scoped analytics |
 | users/ | Administrator role management |

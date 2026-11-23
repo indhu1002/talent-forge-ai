@@ -4,7 +4,7 @@ from django.test import TestCase, override_settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 from .models import User, Resume, Job, Application
-from .analysis import analyze, match
+from .analysis import analyze
 TEXT = """Alex Morgan
 alex@example.com | +91 9876543210 | github.com/alex | linkedin.com/in/alex
 SUMMARY
@@ -127,13 +127,13 @@ class RecruitmentTests(TestCase):
         self.auth(self.candidate)
         self.job.active=False;self.job.save()
         self.assertEqual(self.client.post("/api/applications/",{"job":self.job.id,"resume":self.resume.id},format="json").status_code,403)
-    def test_match_and_private_resume_id(self):
+    def test_jobs_have_no_resume_matching(self):
         self.auth(self.candidate)
-        matches=self.client.get(f"/api/jobs/matches/?resume={self.resume.id}")
-        self.assertEqual(matches.status_code,200)
-        self.assertEqual(matches.data[0]["match"]["score"],100)
-        self.auth(self.other)
-        self.assertEqual(self.client.get(f"/api/jobs/matches/?resume={self.resume.id}").status_code,404)
+        self.assertEqual(self.client.get(f"/api/jobs/matches/?resume={self.resume.id}").status_code, 404)
+        jobs = self.client.get("/api/jobs/").data
+        self.assertIn(self.job.id, [job["id"] for job in jobs])
+        self.assertTrue(all("match" not in job for job in jobs))
+
     def test_admin_and_analytics_scope(self):
         self.auth(self.other)
         self.assertEqual(self.client.get("/api/analytics/").data["resumes"],0)
@@ -152,10 +152,12 @@ class RecruitmentTests(TestCase):
         self.assertEqual(len(result["criteria"]),18)
         self.assertIsNone(result["ai_feedback"])
         self.assertIn("ai_notice",result)
-    def test_skill_boundaries_and_invalid_match_id(self):
-        self.assertEqual(match("JavaScript and MySQL and digital products", ["Java", "SQL", "Git"])["score"],0)
-        self.auth(self.candidate)
-        self.assertEqual(self.client.get("/api/jobs/matches/?resume=invalid").status_code,400)
+    def test_resume_skill_word_boundaries(self):
+        skills = analyze("JavaScript and MySQL and digital products")["skills"]
+        self.assertIn("javascript", skills)
+        self.assertIn("mysql", skills)
+        self.assertTrue({"java", "sql", "git"}.isdisjoint(skills))
+
     @patch.dict("os.environ", {"GROQ_API_KEY":"test", "ENABLE_AI_FEEDBACK":"1", "GROQ_MODEL":"openai/gpt-oss-120b"})
     @patch("recruitment.groq.urllib.request.urlopen")
     def test_feedback_uses_groq_chat_completions(self, http):
