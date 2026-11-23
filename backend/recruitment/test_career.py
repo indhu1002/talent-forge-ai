@@ -125,11 +125,41 @@ class CareerTests(TestCase):
         self.assertNotIn("test-secret",str(error.exception))
     @patch.dict("os.environ",{"GROQ_API_KEY":"test"})
     @patch("recruitment.groq.urllib.request.urlopen")
+    def test_provider_rejected_quoted_day_is_validated_and_scored(self, http):
+        fixture = sample_result()
+        fixture["preparation_plan"][4]["day"] = "5"
+        error = {"error": {"code": "json_validate_failed", "failed_generation": json.dumps(fixture)}}
+        http.side_effect = HTTPError("https://api.groq.com", 400, "Bad Request", {}, response_context(error))
+        result, _ = generate_report(TEXT, JD)
+        self.assertIs(type(result["preparation_plan"][4]["day"]), int)
+        self.assertEqual(result["coverage_score"], 67)
+        http.assert_called_once()
+
+    @patch.dict("os.environ",{"GROQ_API_KEY":"test"})
+    @patch("recruitment.groq.urllib.request.urlopen")
+    def test_invalid_rejected_generation_retries_with_original_inputs(self, http):
+        bad = sample_result()
+        bad["preparation_plan"][4]["day"] = "4"
+        error = {"error": {"code": "json_validate_failed", "failed_generation": json.dumps(bad)}}
+        http.side_effect = [
+            HTTPError("https://api.groq.com", 400, "Bad Request", {}, response_context(error)),
+            response_context(response_data(sample_result())),
+        ]
+        result, _ = generate_report(TEXT, JD)
+        self.assertEqual([d["day"] for d in result["preparation_plan"]], [1, 2, 3, 4, 5])
+        self.assertEqual(http.call_count, 2)
+        for call in http.call_args_list:
+            messages = json.loads(call.args[0].data)["messages"]
+            self.assertEqual(json.loads(messages[1]["content"]), {"resume": TEXT, "job_description": JD})
+
+    @patch.dict("os.environ",{"GROQ_API_KEY":"test"})
+    @patch("recruitment.groq.urllib.request.urlopen")
     def test_invalid_output_not_marked_successful(self,http):
         fixture=sample_result();fixture["interview_questions"]=[]
-        http.return_value=response_context(response_data(fixture))
+        http.side_effect = [response_context(response_data(fixture)) for _ in range(2)]
         with self.assertRaises(CareerAIError):
             generate_report(TEXT,JD)
+        self.assertEqual(http.call_count, 2)
     @patch("recruitment.career_ai.connections.close_all")
     @patch("recruitment.career_ai.close_old_connections")
     @patch("recruitment.career_ai.generate_report",side_effect=CareerAIError("Groq quota or rate limit reached."))

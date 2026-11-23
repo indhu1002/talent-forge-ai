@@ -54,7 +54,13 @@ REPORT_SCHEMA = obj({
         "resume_connection": STRING,
         "follow_up_questions": STRINGS,
     })),
-    "preparation_plan": arr(obj({"day": {"type": "integer"}, "focus": STRING, "tasks": STRINGS})),
+    "preparation_plan": arr(obj({
+        "day": {"anyOf": [
+            {"type": "integer", "enum": [1, 2, 3, 4, 5]},
+            enum("1", "2", "3", "4", "5"),
+        ]},
+        "focus": STRING, "tasks": STRINGS,
+    })),
     "questions_to_ask": STRINGS,
     "limitations": STRINGS,
 })
@@ -81,32 +87,32 @@ For personal questions, use only known candidate facts; use bracketed placeholde
 details or an honest answer explaining a learning gap. Never present hypothetical experience
 as something the candidate actually did. Behavioral answers should follow STAR where useful.
 Keep questions specific to this JD and this resume. Provide a practical 5-day preparation plan,
+numbering each day with the JSON integer 1, 2, 3, 4 or 5. Include
 4 thoughtful questions for the interviewer and limitations noting these are predicted practice
 questions, not guaranteed actual interview questions. Return only the requested structured report."""
 
 class CareerAIError(Exception):
     pass
 
-def generate_report(resume_text, job_description):
-    key = os.getenv("GROQ_API_KEY", "").strip()
-    if not key:
-        raise CareerAIError("Groq is not configured. Add GROQ_API_KEY to backend/.env.")
-    model = groq.career_model()
+def request_report(model, inputs, instructions):
     try:
-        text = groq.complete(
-            model, SYSTEM_PROMPT,
-            json.dumps({"resume": resume_text, "job_description": job_description}, ensure_ascii=False),
+        return groq.complete(
+            model, instructions, inputs,
             token_limit=12000, timeout=180,
             response_format={"type": "json_schema", "json_schema": {
                 "name": "career_coaching_report", "strict": True, "schema": REPORT_SCHEMA,
             }},
         )
     except urllib.error.HTTPError as exc:
+        try:
+            detail = json.load(exc).get("error", {})
+            provider_code = detail.get("code")
+        except (AttributeError, ValueError, TypeError):
+            provider_code = None
+        if exc.code in (400, 422) and provider_code == "json_validate_failed":
+            # This is generated content. It must pass the same checks as a 200 response.
+            return detail.get("failed_generation")
         if exc.code == 429:
-            try:
-                provider_code = json.loads(exc.read()).get("error", {}).get("code")
-            except Exception:
-                provider_code = None
             if provider_code == "insufficient_quota":
                 raise CareerAIError("Groq API credits or spending quota are exhausted. Check API billing/credits, then generate a new report.") from None
             raise CareerAIError("Groq quota or rate limit reached. Check API billing/credits or rate limits, then try again.") from None
@@ -114,39 +120,63 @@ def generate_report(resume_text, job_description):
             raise CareerAIError("Groq rejected the API credentials or model access. Check the server API key and project permissions.") from None
         if exc.code == 413:
             raise CareerAIError("This report exceeds the Groq request limit. Try a shorter resume or job description.") from None
-        if exc.code in (400, 404, 422):
-            raise CareerAIError("Groq could not accept this request. Check GROQ_CAREER_MODEL and model support for structured outputs.") from None
+        if exc.code == 404 or provider_code in ("model_not_found", "model_decommissioned"):
+            raise CareerAIError("The configured coaching model is unavailable. Please contact the site administrator.") from None
+        if exc.code in (400, 422):
+            raise CareerAIError("Groq rejected this report request. If it happens again, contact the site administrator.") from None
         raise CareerAIError("Groq is temporarily unavailable. Please try again later.") from None
     except (urllib.error.URLError, TimeoutError, socket.timeout):
         raise CareerAIError("Groq did not respond in time. Check the connection and try again.") from None
     except (ValueError, KeyError, IndexError, TypeError):
         raise CareerAIError("Groq returned an incomplete report. Please try again.") from None
-    try:
-        result = json.loads(text)
-        validate(result, REPORT_SCHEMA)
-        if not 1 <= len(result["requirements"]) <= 30 or len(result["interview_questions"]) != 20:
-            raise ValueError()
-        expected_categories = {"technical": 6, "project": 4, "behavioral": 4, "scenario": 4, "HR": 2}
-        if Counter(q["category"] for q in result["interview_questions"]) != expected_categories:
-            raise ValueError()
-        if sorted(day["day"] for day in result["preparation_plan"]) != [1, 2, 3, 4, 5]:
-            raise ValueError()
-        for req in result["requirements"]:
-            if req["status"] != "missing" and req["resume_evidence"].strip() not in resume_text:
-                req["status"] = "missing"
-                req["resume_evidence"] = "Not evidenced in resume"
-                req["recommendation"] = "Confirm this requirement with a specific truthful example; the generated evidence could not be verified."
-        for edit in result["resume_edits"]:
-            if edit["original"] and edit["original"] not in resume_text:
-                edit["needs_confirmation"] = True
-                edit["reason"] += " The original text could not be verified; check this suggestion before using it."
-        weights = {"essential": 2, "preferred": 1}
-        coverage = {"matched": 1, "partial": .5, "missing": 0}
-        denominator = sum(weights[r["importance"]] for r in result["requirements"])
-        result["coverage_score"] = round(100 * sum(weights[r["importance"]] * coverage[r["status"]] for r in result["requirements"]) / denominator)
-        result["score_explanation"] = "Resume evidence coverage: essential requirements have weight 2, preferred requirements weight 1; partial evidence receives half credit. This is not an ATS score or a hiring probability."
-    except (ValueError, KeyError, TypeError, ValidationError):
-        raise CareerAIError("The AI returned an incomplete report. Please try again; no report was saved as successful.") from None
+
+
+def validate_report(text):
+    result = json.loads(text)
+    if isinstance(result, dict) and isinstance(result.get("preparation_plan"), list):
+        for item in result["preparation_plan"]:
+            if isinstance(item, dict) and item.get("day") in ("1", "2", "3", "4", "5"):
+                item["day"] = int(item["day"])
+    validate(result, REPORT_SCHEMA)
+    if not 1 <= len(result["requirements"]) <= 30 or len(result["interview_questions"]) != 20:
+        raise ValueError("Invalid requirement or question count")
+    expected_categories = {"technical": 6, "project": 4, "behavioral": 4, "scenario": 4, "HR": 2}
+    if Counter(q["category"] for q in result["interview_questions"]) != expected_categories:
+        raise ValueError("Invalid interview question categories")
+    if sorted(day["day"] for day in result["preparation_plan"]) != [1, 2, 3, 4, 5]:
+        raise ValueError("Invalid preparation days")
+    return result
+
+
+def generate_report(resume_text, job_description):
+    if not os.getenv("GROQ_API_KEY", "").strip():
+        raise CareerAIError("Groq is not configured. Add GROQ_API_KEY to backend/.env.")
+    model = groq.career_model()
+    inputs = json.dumps({"resume": resume_text, "job_description": job_description}, ensure_ascii=False)
+    instructions = SYSTEM_PROMPT
+    for attempt in range(2):
+        text = request_report(model, inputs, instructions)
+        try:
+            result = validate_report(text)
+            break
+        except (ValueError, TypeError, ValidationError):
+            if attempt == 1:
+                raise CareerAIError("Groq returned an incomplete coaching report twice. Please generate a new report.") from None
+            instructions += "\nGenerate the full report again. Check every field type, the five numbered days, and the exact count per interview category before returning it."
+    for req in result["requirements"]:
+        if req["status"] != "missing" and req["resume_evidence"].strip() not in resume_text:
+            req["status"] = "missing"
+            req["resume_evidence"] = "Not evidenced in resume"
+            req["recommendation"] = "Confirm this requirement with a specific truthful example; the generated evidence could not be verified."
+    for edit in result["resume_edits"]:
+        if edit["original"] and edit["original"] not in resume_text:
+            edit["needs_confirmation"] = True
+            edit["reason"] += " The original text could not be verified; check this suggestion before using it."
+    weights = {"essential": 2, "preferred": 1}
+    coverage = {"matched": 1, "partial": .5, "missing": 0}
+    denominator = sum(weights[r["importance"]] for r in result["requirements"])
+    result["coverage_score"] = round(100 * sum(weights[r["importance"]] * coverage[r["status"]] for r in result["requirements"]) / denominator)
+    result["score_explanation"] = "Resume evidence coverage: essential requirements have weight 2, preferred requirements weight 1; partial evidence receives half credit. This is not an ATS score or a hiring probability."
     return result, model
 
 def run_report(report_id):
