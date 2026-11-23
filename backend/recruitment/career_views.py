@@ -9,6 +9,7 @@ from rest_framework.decorators import api_view
 from rest_framework.throttling import UserRateThrottle
 from .models import Resume, CareerReport
 from .career_ai import enqueue_report
+from .groq import career_model
 
 class CareerCreateThrottle(UserRateThrottle):
     rate = "10/hour"
@@ -28,7 +29,7 @@ class ReportInput(serializers.Serializer):
     consent = serializers.BooleanField()
     def validate_consent(self, value):
         if not value:
-            raise serializers.ValidationError("Agree to send the selected resume text and JD to OpenAI to generate your report.")
+            raise serializers.ValidationError("Agree to send the selected resume text and JD to Groq to generate your report.")
         return value
 
 class CareerReportViewSet(viewsets.ModelViewSet):
@@ -51,8 +52,8 @@ class CareerReportViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("Choose a resume from your own account.")
         if len(data["resume"].text) > 30000:
             return Response({"detail": "For JD coaching, use a resume under 30,000 characters."}, status=400)
-        if not os.getenv("OPENAI_API_KEY", "").strip():
-            return Response({"detail": "OpenAI is not configured. Add OPENAI_API_KEY to backend/.env."}, status=503)
+        if not os.getenv("GROQ_API_KEY", "").strip():
+            return Response({"detail": "Groq is not configured. Add GROQ_API_KEY to backend/.env."}, status=503)
         with transaction.atomic():
             # Serialize per-user creation so concurrent clicks cannot bypass the limit.
             type(request.user).objects.select_for_update().get(pk=request.user.pk)
@@ -67,4 +68,4 @@ class CareerReportViewSet(viewsets.ModelViewSet):
 
 @api_view(["GET"])
 def career_config(request):
-    return Response({"configured": bool(os.getenv("OPENAI_API_KEY", "").strip()), "model": os.getenv("CAREER_AI_MODEL", os.getenv("OPENAI_MODEL", "gpt-4.1-mini")), "question_count": 20})
+    return Response({"configured": bool(os.getenv("GROQ_API_KEY", "").strip()), "model": career_model(), "question_count": 20})

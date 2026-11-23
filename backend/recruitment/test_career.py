@@ -32,7 +32,7 @@ def sample_result():
 def response_context(data):
     return io.BytesIO(json.dumps(data).encode())
 def response_data(result):
-    return {"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":json.dumps(result)}]}]}
+    return {"choices":[{"finish_reason":"stop","message":{"content":json.dumps(result)}}]}
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
 class CareerTests(TestCase):
@@ -46,7 +46,7 @@ class CareerTests(TestCase):
         self.report=CareerReport.objects.create(owner=self.candidate,resume=self.resume,title="Target job",job_description=JD,resume_snapshot=TEXT)
     def auth(self,user):
         self.client.force_authenticate(user=user)
-    @patch.dict("os.environ",{"OPENAI_API_KEY":"test-secret"})
+    @patch.dict("os.environ",{"GROQ_API_KEY":"test-secret"})
     @patch("recruitment.career_views.enqueue_report")
     def test_generate_validates_and_schedules_once(self,enqueue):
         self.auth(self.candidate)
@@ -63,7 +63,7 @@ class CareerTests(TestCase):
             self.assertEqual(self.client.get("/api/career-reports/").data,[])
             self.assertEqual(self.client.get(f"/api/career-reports/{self.report.id}/").status_code,404)
             self.assertEqual(self.client.delete(f"/api/career-reports/{self.report.id}/").status_code,404)
-    @patch.dict("os.environ",{"OPENAI_API_KEY":"test"})
+    @patch.dict("os.environ",{"GROQ_API_KEY":"test"})
     def test_foreign_resume_and_roles_denied(self):
         self.auth(self.other)
         body={"resume":self.resume.id,"job_description":JD,"consent":True}
@@ -74,14 +74,14 @@ class CareerTests(TestCase):
         self.auth(self.candidate)
         self.assertEqual(self.client.post("/api/career-reports/",{"resume":self.resume.id,"job_description":JD,"consent":False},format="json").status_code,400)
         self.assertEqual(self.client.post("/api/career-reports/",{"resume":self.resume.id,"job_description":"too short","consent":True},format="json").status_code,400)
-    @patch.dict("os.environ",{"OPENAI_API_KEY":""})
+    @patch.dict("os.environ",{"GROQ_API_KEY":""})
     def test_missing_config_clear_error_and_no_secret_response(self):
         self.auth(self.candidate)
         self.assertEqual(self.client.post("/api/career-reports/",{"resume":self.resume.id,"job_description":JD,"consent":True},format="json").status_code,503)
         config=self.client.get("/api/career-config/").data
         self.assertFalse(config["configured"])
         self.assertNotIn("key",config)
-    @patch.dict("os.environ",{"OPENAI_API_KEY":"test"})
+    @patch.dict("os.environ",{"GROQ_API_KEY":"test"})
     def test_pending_limit(self):
         CareerReport.objects.create(owner=self.candidate,resume=self.resume,title="Second",job_description=JD,resume_snapshot=TEXT)
         self.auth(self.candidate)
@@ -91,20 +91,22 @@ class CareerTests(TestCase):
         self.auth(self.candidate)
         result=self.client.get(f"/api/career-reports/{self.report.id}/")
         self.assertEqual(result.data["status"],"failed")
-    @patch.dict("os.environ",{"OPENAI_API_KEY":"test-secret","CAREER_AI_MODEL":"gpt-4.1-mini"})
-    @patch("recruitment.career_ai.urllib.request.urlopen")
+    @patch.dict("os.environ",{"GROQ_API_KEY":"test-secret","GROQ_CAREER_MODEL":"openai/gpt-oss-120b"})
+    @patch("recruitment.groq.urllib.request.urlopen")
     def test_provider_structured_request_and_weighted_coverage(self,http):
         http.return_value=response_context(response_data(sample_result()))
         result,model=generate_report(TEXT,JD)
         self.assertEqual(result["coverage_score"],67)
         self.assertEqual(len(result["interview_questions"]),20)
         request=http.call_args.args[0];payload=json.loads(request.data)
-        self.assertFalse(payload["store"])
-        self.assertEqual(payload["text"]["format"]["type"],"json_schema")
-        self.assertNotIn("test-secret",payload["input"])
-        self.assertIn("never invent",payload["instructions"].lower())
-    @patch.dict("os.environ",{"OPENAI_API_KEY":"test"})
-    @patch("recruitment.career_ai.urllib.request.urlopen")
+        self.assertEqual(request.full_url, "https://api.groq.com/openai/v1/chat/completions")
+        self.assertEqual(request.get_header("Authorization"), "Bearer test-secret")
+        self.assertTrue(payload["response_format"]["json_schema"]["strict"])
+        self.assertEqual(payload["response_format"]["type"],"json_schema")
+        self.assertNotIn("test-secret",json.dumps(payload))
+        self.assertIn("never invent",payload["messages"][0]["content"].lower())
+    @patch.dict("os.environ",{"GROQ_API_KEY":"test"})
+    @patch("recruitment.groq.urllib.request.urlopen")
     def test_unverified_evidence_does_not_count(self,http):
         fixture=sample_result()
         fixture["requirements"][0]["resume_evidence"]="Invented experience"
@@ -113,16 +115,16 @@ class CareerTests(TestCase):
         result,_=generate_report(TEXT,JD)
         self.assertEqual(result["coverage_score"],0)
         self.assertTrue(result["resume_edits"][0]["needs_confirmation"])
-    @patch.dict("os.environ",{"OPENAI_API_KEY":"test-secret"})
-    @patch("recruitment.career_ai.urllib.request.urlopen")
+    @patch.dict("os.environ",{"GROQ_API_KEY":"test-secret"})
+    @patch("recruitment.groq.urllib.request.urlopen")
     def test_quota_error_does_not_expose_provider_or_key(self,http):
-        http.side_effect=HTTPError("https://api.openai.com/v1/responses",429,"test-secret",{},None)
+        http.side_effect=HTTPError("https://api.groq.com/openai/v1/chat/completions",429,"test-secret",{},None)
         with self.assertRaises(CareerAIError) as error:
             generate_report(TEXT,JD)
         self.assertIn("billing",str(error.exception))
         self.assertNotIn("test-secret",str(error.exception))
-    @patch.dict("os.environ",{"OPENAI_API_KEY":"test"})
-    @patch("recruitment.career_ai.urllib.request.urlopen")
+    @patch.dict("os.environ",{"GROQ_API_KEY":"test"})
+    @patch("recruitment.groq.urllib.request.urlopen")
     def test_invalid_output_not_marked_successful(self,http):
         fixture=sample_result();fixture["interview_questions"]=[]
         http.return_value=response_context(response_data(fixture))
@@ -130,7 +132,7 @@ class CareerTests(TestCase):
             generate_report(TEXT,JD)
     @patch("recruitment.career_ai.connections.close_all")
     @patch("recruitment.career_ai.close_old_connections")
-    @patch("recruitment.career_ai.generate_report",side_effect=CareerAIError("OpenAI quota or rate limit reached."))
+    @patch("recruitment.career_ai.generate_report",side_effect=CareerAIError("Groq quota or rate limit reached."))
     def test_worker_persists_failure(self,generator,close_old,close_all):
         run_report(self.report.id)
         self.report.refresh_from_db()
@@ -142,7 +144,7 @@ class CareerTests(TestCase):
     @patch("recruitment.career_ai.generate_report")
     def test_worker_stores_successful_report(self,generator,close_old,close_all):
         result=sample_result();result["coverage_score"]=67
-        generator.return_value=(result,"gpt-4.1-mini")
+        generator.return_value=(result,"openai/gpt-oss-120b")
         run_report(self.report.id)
         self.report.refresh_from_db()
         self.assertEqual(self.report.status,"completed")

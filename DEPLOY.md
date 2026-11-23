@@ -22,7 +22,7 @@ Enter these private environment values in Render:
 | MYSQL_HOST | Aiven hostname |
 | MYSQL_PORT | Aiven connection port |
 | MYSQL_SSL_CA | Entire Aiven CA PEM certificate; actual newlines or literal \n separators |
-| OPENAI_API_KEY | A new private OpenAI API key; leave blank to disable paid AI reports |
+| GROQ_API_KEY | A new private Groq API key; leave blank to disable paid AI reports |
 
 The Blueprint generates SECRET_KEY. RENDER_EXTERNAL_HOSTNAME supplies the allowed domain and trusted CSRF origin. DEBUG is disabled. The Docker image serves the React assets and API on one origin. Migrations and the cache table are applied on startup. No local data is copied to the cloud.
 
@@ -32,13 +32,13 @@ If setting up a Web Service manually, select Docker, repository root, Free, and 
 
 Wait for Render to show Live. Visit the displayed HTTPS URL and /health/. Register a candidate and recruiter, sign in, upload a text PDF, download it and confirm another candidate cannot access it. Restart the service and verify the upload still downloads. Try JD coaching only after setting a valid API key with available credit and an API-accessible model.
 
-The requested model names are kept as configuration, but availability depends on your OpenAI project. A Codex model name alone does not establish OpenAI API availability.
+Set GROQ_MODEL to select the default Groq model. GROQ_CAREER_MODEL overrides it for coaching reports and must support strict JSON schema output.
 
 ## Free-plan limits
 
 Render sleeps after 15 minutes idle and may take about a minute to wake. Aiven's free MySQL has 1 GB disk, 1 GB RAM and may power off after inactivity. PDF storage is capped at 128 MB by default to leave room for database records. The quota is an application budget, not a substitute for provider usage monitoring. AI reports are durable queued records; a request interrupted during provider execution becomes failed and can be retried, with another API call.
 
-OpenAI usage is not included in free hosting. Keep ENABLE_AI_FEEDBACK=0 to avoid optional AI calls during every resume upload. Explicit JD report requests still call OpenAI when a key is configured.
+Groq usage is not included in free hosting. Keep ENABLE_AI_FEEDBACK=0 to avoid optional AI calls during every resume upload. Explicit JD report requests still call Groq when a key is configured.
 
 ## Administrative access
 

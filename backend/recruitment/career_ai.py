@@ -10,6 +10,7 @@ from django.db import close_old_connections, connections
 from django.utils import timezone
 from jsonschema import validate, ValidationError
 from .models import CareerReport
+from . import groq
 
 def obj(properties):
     return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
@@ -87,26 +88,19 @@ class CareerAIError(Exception):
     pass
 
 def generate_report(resume_text, job_description):
-    key = os.getenv("OPENAI_API_KEY", "").strip()
+    key = os.getenv("GROQ_API_KEY", "").strip()
     if not key:
-        raise CareerAIError("OpenAI is not configured. Add OPENAI_API_KEY to backend/.env.")
-    model = os.getenv("CAREER_AI_MODEL", os.getenv("OPENAI_MODEL", "gpt-4.1-mini"))
-    payload = {
-        "model": model, "store": False,
-        "instructions": SYSTEM_PROMPT,
-        "input": json.dumps({"resume": resume_text, "job_description": job_description}, ensure_ascii=False),
-        "max_output_tokens": 12000,
-        "text": {"format": {"type": "json_schema", "name": "career_coaching_report", "strict": True, "schema": REPORT_SCHEMA}},
-    }
-    request = urllib.request.Request(
-        "https://api.openai.com/v1/responses",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
-        method="POST",
-    )
+        raise CareerAIError("Groq is not configured. Add GROQ_API_KEY to backend/.env.")
+    model = groq.career_model()
     try:
-        with urllib.request.urlopen(request, timeout=180) as response:
-            data = json.load(response)
+        text = groq.complete(
+            model, SYSTEM_PROMPT,
+            json.dumps({"resume": resume_text, "job_description": job_description}, ensure_ascii=False),
+            token_limit=12000, timeout=180,
+            response_format={"type": "json_schema", "json_schema": {
+                "name": "career_coaching_report", "strict": True, "schema": REPORT_SCHEMA,
+            }},
+        )
     except urllib.error.HTTPError as exc:
         if exc.code == 429:
             try:
@@ -114,21 +108,19 @@ def generate_report(resume_text, job_description):
             except Exception:
                 provider_code = None
             if provider_code == "insufficient_quota":
-                raise CareerAIError("OpenAI API credits or spending quota are exhausted. Check API billing/credits, then generate a new report.") from None
-            raise CareerAIError("OpenAI quota or rate limit reached. Check API billing/credits or rate limits, then try again.") from None
+                raise CareerAIError("Groq API credits or spending quota are exhausted. Check API billing/credits, then generate a new report.") from None
+            raise CareerAIError("Groq quota or rate limit reached. Check API billing/credits or rate limits, then try again.") from None
         if exc.code in (401, 403):
-            raise CareerAIError("OpenAI rejected the API credentials or model access. Check the server API key and project permissions.") from None
-        if exc.code == 400:
-            raise CareerAIError("OpenAI could not accept this request. Check CAREER_AI_MODEL and model support for structured outputs.") from None
-        raise CareerAIError("OpenAI is temporarily unavailable. Please try again later.") from None
+            raise CareerAIError("Groq rejected the API credentials or model access. Check the server API key and project permissions.") from None
+        if exc.code == 413:
+            raise CareerAIError("This report exceeds the Groq request limit. Try a shorter resume or job description.") from None
+        if exc.code in (400, 404, 422):
+            raise CareerAIError("Groq could not accept this request. Check GROQ_CAREER_MODEL and model support for structured outputs.") from None
+        raise CareerAIError("Groq is temporarily unavailable. Please try again later.") from None
     except (urllib.error.URLError, TimeoutError, socket.timeout):
-        raise CareerAIError("OpenAI did not respond in time. Check the connection and try again.") from None
-    if data.get("status") != "completed":
-        raise CareerAIError("OpenAI could not finish the report. Please try a shorter resume or JD.")
-    content = [part for item in data.get("output", []) for part in item.get("content", [])]
-    if any(part.get("type") == "refusal" for part in content):
-        raise CareerAIError("OpenAI declined this analysis. Please provide a job description and professional resume.")
-    text = "".join(part.get("text", "") for part in content if part.get("type") == "output_text")
+        raise CareerAIError("Groq did not respond in time. Check the connection and try again.") from None
+    except (ValueError, KeyError, IndexError, TypeError):
+        raise CareerAIError("Groq returned an incomplete report. Please try again.") from None
     try:
         result = json.loads(text)
         validate(result, REPORT_SCHEMA)

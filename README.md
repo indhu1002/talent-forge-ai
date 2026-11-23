@@ -13,7 +13,7 @@ Candidates can manage resumes, analyze a resume against a specific job descripti
 - Resume builder with live preview, save/analyze and browser PDF export.
 - Skill-based job matching, applications and recruiter status updates.
 - Analytics based on actual stored data.
-- OpenAI-powered JD coaching with requirement evidence, gaps and proposed resume rewrites.
+- Groq-powered JD coaching with requirement evidence, gaps and proposed resume rewrites.
 - 20 tailored practice questions with sample answers and follow-ups: 6 technical, 4 project, 4 behavioral, 4 scenario and 2 HR.
 - Five-day preparation plans, private saved reports and text export.
 - Responsive candidate and recruiter workspaces.
@@ -25,7 +25,7 @@ Resume scores describe presentation and keyword evidence. Job matching measures 
 - Python 3.14.
 - Node.js and npm.
 - MySQL 8+ for the MySQL configuration; SQLite is available for local development.
-- An OpenAI API key and available API quota for AI-generated JD reports.
+- A Groq API key and available API quota for AI-generated JD reports.
 
 ## Quick start
 
@@ -84,26 +84,26 @@ Configure matching values in backend/.env. Docker Compose binds MySQL to loopbac
 
 Set these values in backend/.env and restart Django:
 
-    OPENAI_API_KEY=your-private-api-key
-    OPENAI_MODEL=gpt-5.6-terra
-    CAREER_AI_MODEL=gpt-5.6-terra
+    GROQ_API_KEY=your-private-api-key
+    GROQ_MODEL=openai/gpt-oss-120b
+    GROQ_CAREER_MODEL=openai/gpt-oss-120b
 
-Candidate users open JD & interview, select or upload a resume, paste a JD and agree to send the selected text to OpenAI before generating a report. API usage may incur charges. Reports run in the background and remain private to their owner, including after a resume is shared through an application.
+Candidate users open JD & interview, select or upload a resume, paste a JD and agree to send the selected text to Groq before generating a report. API usage may incur charges. Reports run in the background and remain private to their owner, including after a resume is shared through an application.
 
-The Responses API uses structured output and store=false. Provider responses are validated before being marked successful. Unverified requirement evidence is marked unevidenced; edits with an unverified source excerpt require confirmation. Each report includes a resume snapshot. Refreshing/viewing an existing report does not start another provider request.
+Groq chat completions use a strict JSON schema for coaching reports. Provider responses are validated before being marked successful. Unverified requirement evidence is marked unevidenced; edits with an unverified source excerpt require confirmation. Each report includes a resume snapshot. Refreshing/viewing an existing report does not start another provider request.
 
 Suggestions do not change the original resume. Verify every statement and replace bracketed placeholders with truthful details. Unsupported skills are development targets, not qualifications to claim. Interview questions are realistic practice predictions; actual questions cannot be guaranteed. Practice notes stay in the current page and are not persisted.
 
 Generic resume AI feedback is separately enabled by ENABLE_AI_FEEDBACK=1. Local 18-criterion scoring works without a key.
 
-If OpenAI returns HTTP 429, check API billing, credits and rate limits. Credential presence alone does not confirm provider access. The initial live tests encountered HTTP 429; a successful live provider report has not yet been verified. The complete report UI was validated with an explicitly labeled test fixture, not a substitute AI report.
+If Groq returns HTTP 429, check the project's rate limits and available quota before retrying.
 
 ## Windows helpers
 
 - Setup-TalentForge.ps1: install dependencies, apply migrations and seed demo accounts.
 - Start-TalentForge.ps1 / Stop-TalentForge.ps1: start/stop local development servers.
 - Restart-Backend.ps1: restart Django after changing configuration.
-- Set-OpenAIKey.ps1: enter an API key locally with masked input.
+- Set-GroqKey.ps1: enter an API key locally with masked input.
 
 The start/stop helpers can manage a project-local MySQL instance on port 3307 when configured and initialized on Windows. That machine-specific data directory and its passwords are excluded from this repository. Other users should use SQLite, an existing MySQL database or Docker Compose.
 
@@ -146,7 +146,7 @@ The cloud build serves React and Django from the same HTTPS origin. It uses Guni
 
 Render's free app service sleeps after inactivity. Use Aiven's free MySQL plan for persistent accounts, applications, reports and PDFs; Render's free filesystem cannot retain uploads. The PDF storage budget defaults to 128 MB within Aiven's 1 GB database allowance. This is intended for a small portfolio/demo installation. Larger deployments should use object storage and a dedicated queue.
 
-Hosting can stay on free plans within their limits. OpenAI API usage is separately billed; local resume scoring remains available without a key. The deployment does not bypass API quota or guarantee model access. Never place API keys or database credentials in source files or frontend variables.
+Hosting can stay on free plans within their limits. Groq API usage is separately billed; local resume scoring remains available without a key. The deployment does not bypass API quota or guarantee model access. Never place API keys or database credentials in source files or frontend variables.
 
 JWTs currently use sessionStorage. Cloud providers may suspend free services, and database backups must be monitored. This project has not undergone a production security audit.
 
@@ -154,8 +154,8 @@ JWTs currently use sessionStorage. Cloud providers may suspend free services, an
 
 - [Django REST Framework permissions](https://www.django-rest-framework.org/api-guide/permissions/)
 - [Simple JWT blacklisting](https://django-rest-framework-simplejwt.readthedocs.io/en/stable/blacklist_app.html)
-- [OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
-- [OpenAI API error codes](https://developers.openai.com/api/docs/guides/error-codes)
+- [Groq Structured Outputs](https://console.groq.com/docs/structured-outputs)
+- [Groq API error codes](https://console.groq.com/docs/errors)
 ## Public reviewer demos
 
 After migrations, run `python manage.py seed_reviewer_demo` once to provision the two reviewer accounts. The command is idempotent and refuses to overwrite a real or privileged account. Public credentials are intentionally limited to `demo-candidate` and `demo-recruiter` with password `TalentForgeDemo!2026`; the login page uses them automatically. Do not reuse this password for real accounts. Demo roles cannot be promoted through user management.

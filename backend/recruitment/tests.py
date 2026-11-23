@@ -145,8 +145,8 @@ class RecruitmentTests(TestCase):
     def test_empty_skill_list_rejected(self):
         self.auth(self.recruiter)
         self.assertEqual(self.client.post("/api/jobs/",{"title":"Dev","company":"Studio","location":"Remote","description":"Build","skills":[]},format="json").status_code,400)
-    @patch("recruitment.analysis.urllib.request.urlopen", side_effect=TimeoutError)
-    @patch.dict("os.environ", {"OPENAI_API_KEY":"test","ENABLE_AI_FEEDBACK":"1"})
+    @patch("recruitment.groq.urllib.request.urlopen", side_effect=TimeoutError)
+    @patch.dict("os.environ", {"GROQ_API_KEY":"test","ENABLE_AI_FEEDBACK":"1"})
     def test_ai_failure_preserves_local_analysis(self, mock):
         result=analyze(TEXT)
         self.assertEqual(len(result["criteria"]),18)
@@ -156,17 +156,17 @@ class RecruitmentTests(TestCase):
         self.assertEqual(match("JavaScript and MySQL and digital products", ["Java", "SQL", "Git"])["score"],0)
         self.auth(self.candidate)
         self.assertEqual(self.client.get("/api/jobs/matches/?resume=invalid").status_code,400)
-    @patch.dict("os.environ", {"OPENAI_API_KEY":"test", "ENABLE_AI_FEEDBACK":"1", "OPENAI_MODEL":"gpt-5.6-terra"})
-    @patch("recruitment.analysis.urllib.request.urlopen")
-    def test_terra_feedback_uses_responses_api(self, http):
+    @patch.dict("os.environ", {"GROQ_API_KEY":"test", "ENABLE_AI_FEEDBACK":"1", "GROQ_MODEL":"openai/gpt-oss-120b"})
+    @patch("recruitment.groq.urllib.request.urlopen")
+    def test_feedback_uses_groq_chat_completions(self, http):
         import json
         import io
-        http.return_value = io.BytesIO(json.dumps({"status":"completed","output":[{"content":[{"type":"output_text","text":"Highlight the API project and quantify the outcomes you can verify."}]}]}).encode())
+        http.return_value = io.BytesIO(json.dumps({"choices":[{"finish_reason":"stop","message":{"content":"Highlight the API project and quantify the outcomes you can verify."}}]}).encode())
         result = analyze(TEXT)
         request = http.call_args.args[0]
         payload = json.loads(request.data)
-        self.assertEqual(request.full_url, "https://api.openai.com/v1/responses")
-        self.assertEqual(payload["model"], "gpt-5.6-terra")
-        self.assertFalse(payload["store"])
+        self.assertEqual(request.full_url, "https://api.groq.com/openai/v1/chat/completions")
+        self.assertEqual(payload["model"], "openai/gpt-oss-120b")
+        self.assertEqual(payload["messages"][1]["content"], TEXT[:18000])
         self.assertNotIn("max_tokens", payload)
         self.assertIn("Highlight the API project", result["ai_feedback"])
